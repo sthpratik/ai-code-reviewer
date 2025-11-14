@@ -64,11 +64,16 @@ class BitbucketAPI:
             comment_data = {"text": content}
             
             if file_path and line_number:
+                # For Bitbucket Server, inline comments need anchor with path and line
                 comment_data["anchor"] = {
                     "path": file_path,
                     "line": line_number,
-                    "lineType": "ADDED"
+                    "lineType": "ADDED",
+                    "fileType": "TO"
                 }
+                print(f"🔗 Adding inline comment: {file_path}:{line_number}")
+            else:
+                print(f"💬 Adding general PR comment")
         else:
             # Bitbucket Cloud API
             url = f"{self.base_url}/repositories/{workspace}/{repo}/pullrequests/{pr_id}/comments"
@@ -83,6 +88,23 @@ class BitbucketAPI:
         response = requests.post(url, json=comment_data, headers=self.headers)
         response.raise_for_status()
         return response.json()
+    
+    def get_file_content(self, workspace: str, repo: str, file_path: str, commit_id: str = None) -> str:
+        """Get file content from Bitbucket."""
+        if self.is_server:
+            if commit_id:
+                url = f"{self.base_url}/projects/{workspace}/repos/{repo}/raw/{file_path}?at={commit_id}"
+            else:
+                url = f"{self.base_url}/projects/{workspace}/repos/{repo}/raw/{file_path}"
+        else:
+            if commit_id:
+                url = f"{self.base_url}/repositories/{workspace}/{repo}/src/{commit_id}/{file_path}"
+            else:
+                url = f"{self.base_url}/repositories/{workspace}/{repo}/src/HEAD/{file_path}"
+        
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return response.text
 
 def create_bitbucket_client() -> BitbucketAPI:
     """Create Bitbucket API client from environment variables."""

@@ -3,6 +3,7 @@
 
 import sys
 import os
+import glob
 import argparse
 from dotenv import load_dotenv
 from code_reviewer import CodeReviewer
@@ -13,8 +14,8 @@ def main():
     parser = argparse.ArgumentParser(description='AI Code Review CLI')
     
     # Mode selection
-    parser.add_argument('mode', choices=['local', 'pr'], 
-                       help='Review mode: local changes or Bitbucket PR')
+    parser.add_argument('mode', choices=['local', 'pr', 'publish'], 
+                       help='Review mode: local changes, Bitbucket PR, or publish comments')
     
     # Local mode options
     parser.add_argument('--base', default='develop',
@@ -25,9 +26,13 @@ def main():
     parser.add_argument('--repo', help='Repository name')
     parser.add_argument('--pr-id', help='Pull request ID')
     
+    # Publish mode options
+    parser.add_argument('review_file', nargs='?', 
+                       help='Review file to publish (optional for publish mode)')
+    
     # Comment control
     parser.add_argument('--min-severity', choices=['suggestion', 'minor', 'major', 'critical'],
-                       help='Minimum severity to post as PR comment (default: from .env)')
+                       help='Minimum severity to post as PR comment')
     
     args = parser.parse_args()
     
@@ -49,10 +54,29 @@ def main():
                 sys.exit(1)
             
             print(f"🔍 Reviewing PR #{args.pr_id} in {args.workspace}/{args.repo}...")
-            print(f"📝 Comment threshold: {reviewer.min_severity} and above")
             reviews = reviewer.review_pull_request(args.workspace, args.repo, args.pr_id)
+            
+        elif args.mode == 'publish':
+            review_file = args.review_file
+            
+            # If no file specified, use the latest one
+            if not review_file:
+                review_files = glob.glob('reviews/pr_*.json')
+                if not review_files:
+                    print("❌ No review files found. Run a PR review first.")
+                    sys.exit(1)
+                review_file = max(review_files, key=os.path.getctime)
+                print(f"📄 Using latest review file: {review_file}")
+            
+            print(f"📤 Publishing comments from: {review_file}")
+            if args.min_severity:
+                print(f"📝 Comment threshold: {args.min_severity} and above")
+            
+            comments_added = reviewer.publish_comments(review_file, args.min_severity)
+            print(f"✅ Published {comments_added} comments!")
+            return
         
-        # Print results
+        # Print results for local/pr modes
         if reviews:
             print(f"\n✅ Review complete! Found {len(reviews)} items to review.")
             reviewer.print_local_review(reviews)

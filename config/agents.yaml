@@ -40,13 +40,25 @@ tasks:
       4. Security issues
       5. Best practices adherence
       
-      Format your response as JSON with:
-      - file_path: string
-      - severity: critical|major|minor|suggestion
-      - line_number: int (if applicable)
-      - issue: string
-      - recommendation: string
-    expected_output: "JSON formatted code review feedback"
+      IMPORTANT: For each issue, try to provide a specific line number where the issue occurs. 
+      Look at the diff content to identify exact line numbers of problematic code.
+      
+      Return ONLY valid JSON in this exact format:
+      {{
+        "file_path": "{file_path}",
+        "feedback": [
+          {{
+            "severity": "major",
+            "line_number": 42,
+            "issue": "Brief description of the problem",
+            "recommendation": "Specific actionable advice to fix the issue"
+          }}
+        ]
+      }}
+      
+      Severity levels: critical, major, minor, suggestion
+      Always include line_number when possible.
+    expected_output: "Valid JSON with feedback array containing line-specific reviews"
     
   summary:
     description_template: |

@@ -49,18 +49,39 @@ class CodeReviewer:
                 
                 try:
                     review_data = json.loads(result)
-                    # Ensure review_data has required fields
+                    
+                    # Handle different response formats from AI
                     if isinstance(review_data, dict):
-                        review_data['file_path'] = file_path
-                        reviews.append(review_data)
+                        # Check if it has a feedback/reviews array
+                        if 'feedback' in review_data:
+                            for item in review_data['feedback']:
+                                item['file_path'] = file_path
+                                reviews.append(item)
+                        elif 'reviews' in review_data:
+                            for item in review_data['reviews']:
+                                item['file_path'] = file_path
+                                reviews.append(item)
+                        elif 'review_items' in review_data:
+                            for item in review_data['review_items']:
+                                item['file_path'] = file_path
+                                reviews.append(item)
+                        elif 'review_feedback' in review_data:
+                            for item in review_data['review_feedback']:
+                                item['file_path'] = file_path
+                                reviews.append(item)
+                        else:
+                            # Single review object
+                            review_data['file_path'] = file_path
+                            reviews.append(review_data)
                     elif isinstance(review_data, list):
-                        # Handle case where AI returns array of reviews
+                        # Array of reviews
                         for item in review_data:
                             if isinstance(item, dict):
                                 item['file_path'] = file_path
                                 reviews.append(item)
                     else:
                         raise ValueError("Invalid review format")
+                        
                 except (json.JSONDecodeError, ValueError) as e:
                     print(f"⚠️  JSON parsing error for {file_path}: {e}")
                     print(f"Raw result: {result[:200]}...")
@@ -101,9 +122,17 @@ class CodeReviewer:
                         # Extract file-specific diff from full diff
                         file_diff = self._extract_file_diff(diff_text, file_path)
                         
+                        # Try to get actual file content from Bitbucket
+                        try:
+                            file_content = self.bitbucket_client.get_file_content(workspace, repo, file_path)
+                            print(f"📄 Fetched full file content ({len(file_content)} chars)")
+                        except Exception as e:
+                            print(f"⚠️  Could not fetch file content: {e}")
+                            file_content = f"PR changes for {file_path}\n\nDiff:\n{file_diff}"
+                        
                         context = {
                             'file_path': file_path,
-                            'file_content': f"PR changes for {file_path}",
+                            'file_content': file_content,
                             'diff_content': file_diff,
                             'standards': self.standards
                         }
@@ -136,44 +165,61 @@ class CodeReviewer:
                                 'recommendation': result
                             })
             
-            # Add comments to PR based on severity threshold
-            comments_added = 0
-            for review in reviews:
-                severity = review.get('severity', '').lower()
+            print(f"\n📝 Generated {len(reviews)} reviews")
+            print(f"📊 Review summary:")
+            for review in reviews[:3]:  # Show first 3 reviews
+                severity = review.get('severity', 'no severity')
+                issue = review.get('issue', 'no issue')
                 file_path = review.get('file_path', 'unknown')
-                
-                print(f"Review severity: '{severity}' for {file_path}")
-                
-                # Debug: show full review if severity is missing
-                if not severity:
-                    print(f"⚠️  Missing severity in review: {review}")
-                
-                if self._should_post_comment(severity):
-                    try:
-                        comment = f"**{severity.upper()}**: {review.get('issue', 'No issue specified')}\n\n{review.get('recommendation', 'No recommendation')}"
-                        
-                        result = self.bitbucket_client.add_comment(
-                            workspace, repo, pr_id, comment,
-                            review.get('file_path'), review.get('line_number')
-                        )
-                        comments_added += 1
-                        print(f"✓ Added comment to PR for {file_path}")
-                        
-                    except Exception as e:
-                        print(f"✗ Failed to add comment: {e}")
-                else:
-                    print(f"ℹ️  Skipping comment (severity: '{severity}', threshold: {self.min_severity}) for {file_path}")
+                print(f"  - {file_path}: {severity} - {issue[:50]}...")
             
-            print(f"\n📝 Added {comments_added} comments to PR out of {len(reviews)} reviews")
-            
-            # Save reviews to file
-            self._save_reviews_to_file(reviews, workspace, repo, pr_id)
+            # Save reviews to file (don't post comments yet)
+            try:
+                review_file = self._save_reviews_to_file(reviews, workspace, repo, pr_id)
+                print(f"💾 Reviews saved to: {review_file}")
+                print(f"📋 To publish comments: ./review publish {review_file}")
+            except Exception as e:
+                print(f"❌ Error saving reviews: {e}")
             
             return reviews
             
         except Exception as e:
             print(f"Error fetching PR changes: {e}")
             return []
+    
+    def _parse_diff_line_numbers(self, diff_text: str, file_path: str) -> Dict[int, int]:
+        """Parse diff to map absolute line numbers to diff line numbers."""
+        lines = diff_text.split('\n')
+        line_mapping = {}  # absolute_line -> diff_line
+        
+        current_old_line = 0
+        current_new_line = 0
+        diff_line = 0
+        
+        for line in lines:
+            diff_line += 1
+            
+            if line.startswith('@@'):
+                # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+                import re
+                match = re.match(r'@@ -(\d+),?\d* \+(\d+),?\d* @@', line)
+                if match:
+                    current_old_line = int(match.group(1)) - 1
+                    current_new_line = int(match.group(2)) - 1
+            elif line.startswith('+'):
+                # Added line
+                current_new_line += 1
+                line_mapping[current_new_line] = diff_line
+            elif line.startswith('-'):
+                # Removed line
+                current_old_line += 1
+            elif not line.startswith('\\'):
+                # Context line (unchanged)
+                current_old_line += 1
+                current_new_line += 1
+                line_mapping[current_new_line] = diff_line
+        
+        return line_mapping
     
     def _extract_file_diff(self, full_diff: str, file_path: str) -> str:
         """Extract diff for specific file from full diff text."""
@@ -191,6 +237,26 @@ class CodeReviewer:
                 file_diff.append(line)
         
         return '\n'.join(file_diff)
+        """Extract diff for specific file from full diff text."""
+        lines = full_diff.split('\n')
+        file_diff = []
+        in_file = False
+        
+        for line in lines:
+            if line.startswith('diff --git') and file_path in line:
+                in_file = True
+                file_diff = [line]
+            elif line.startswith('diff --git') and in_file:
+                break
+            elif in_file:
+                file_diff.append(line)
+        
+        return '\n'.join(file_diff)
+    
+    def _should_review_file(self, file_path: str) -> bool:
+        """Check if file should be reviewed based on extension."""
+        review_extensions = {'.py', '.js', '.ts', '.java', '.go', '.rb', '.php', '.cs', '.cpp', '.c', '.swift', '.kt', '.rs'}
+        return any(file_path.endswith(ext) for ext in review_extensions)
     
     def _should_post_comment(self, severity: str) -> bool:
         """Check if severity level qualifies for PR comment."""
@@ -215,26 +281,127 @@ class CodeReviewer:
         os.makedirs("reviews", exist_ok=True)
         
         # Save reviews
+        data = {
+            'timestamp': timestamp,
+            'workspace': workspace,
+            'repo': repo,
+            'pr_id': pr_id,
+            'reviews': reviews,
+            'summary': {
+                'total_files': len(reviews),
+                'critical': len([r for r in reviews if r.get('severity') == 'critical']),
+                'major': len([r for r in reviews if r.get('severity') == 'major']),
+                'minor': len([r for r in reviews if r.get('severity') == 'minor']),
+                'suggestion': len([r for r in reviews if r.get('severity') == 'suggestion'])
+            }
+        }
+        
         with open(filename, 'w') as f:
-            json.dump({
-                'timestamp': timestamp,
-                'workspace': workspace,
-                'repo': repo,
-                'pr_id': pr_id,
-                'reviews': reviews,
-                'summary': {
-                    'total_files': len(reviews),
-                    'critical': len([r for r in reviews if r.get('severity') == 'critical']),
-                    'major': len([r for r in reviews if r.get('severity') == 'major']),
-                    'minor': len([r for r in reviews if r.get('severity') == 'minor']),
-                    'suggestion': len([r for r in reviews if r.get('severity') == 'suggestion'])
-                }
-            }, indent=2)
+            json.dump(data, f, indent=2)
         
         print(f"💾 Reviews saved to: {filename}")
         return filename
     
-    def _should_review_file(self, file_path: str) -> bool:
+    def publish_comments(self, review_file: str, min_severity: str = None):
+        """Publish comments from a review file to Bitbucket PR."""
+        if not os.path.exists(review_file):
+            raise FileNotFoundError(f"Review file not found: {review_file}")
+        
+        with open(review_file, 'r') as f:
+            data = json.load(f)
+        
+        reviews = data.get('reviews', [])
+        workspace = data.get('workspace')
+        repo = data.get('repo')
+        pr_id = data.get('pr_id')
+        
+        if not all([workspace, repo, pr_id]):
+            raise ValueError("Review file missing required PR information")
+        
+        # Use provided min_severity or fall back to instance setting
+        threshold = min_severity or self.min_severity
+        
+        # Extract individual feedback items from nested structure
+        individual_reviews = []
+        for review in reviews:
+            file_path = review.get('file_path', 'unknown')
+            
+            # Check if this review has a feedback array (nested structure)
+            if 'feedback' in review:
+                for feedback_item in review['feedback']:
+                    feedback_item['file_path'] = file_path
+                    individual_reviews.append(feedback_item)
+            else:
+                # Single review item
+                individual_reviews.append(review)
+        
+        print(f"📋 Found {len(individual_reviews)} individual review items")
+        
+        # Get PR diff to map line numbers correctly
+        try:
+            pr_diff = self.bitbucket_client.get_pull_request_diff(workspace, repo, pr_id)
+            print(f"📄 Fetched PR diff for line number mapping")
+        except Exception as e:
+            print(f"⚠️  Could not fetch PR diff: {e}")
+            pr_diff = ""
+        
+        comments_added = 0
+        for review in individual_reviews:
+            severity = review.get('severity', '').lower()
+            file_path = review.get('file_path', 'unknown')
+            absolute_line = review.get('line_number')
+            
+            print(f"🔍 Processing: {file_path} - {severity} (line {absolute_line})")
+            
+            if self._should_post_comment_with_threshold(severity, threshold):
+                try:
+                    comment = f"**{severity.upper()}**: {review.get('issue', 'No issue specified')}\n\n{review.get('recommendation', 'No recommendation')}"
+                    
+                    # Convert absolute line number to diff line number for Bitbucket Server
+                    diff_line = None
+                    if absolute_line and pr_diff:
+                        line_mapping = self._parse_diff_line_numbers(pr_diff, file_path)
+                        diff_line = line_mapping.get(absolute_line)
+                        if diff_line:
+                            print(f"📍 Mapped line {absolute_line} → diff line {diff_line}")
+                        else:
+                            print(f"⚠️  Could not map line {absolute_line} to diff")
+                    
+                    # Use diff line number if available, otherwise use absolute line
+                    line_for_comment = diff_line if diff_line else absolute_line
+                    
+                    if line_for_comment:
+                        print(f"📍 Adding inline comment at line {line_for_comment}")
+                        result = self.bitbucket_client.add_comment(
+                            workspace, repo, pr_id, comment,
+                            file_path, line_for_comment
+                        )
+                    else:
+                        print(f"📝 Adding general PR comment (no line number)")
+                        result = self.bitbucket_client.add_comment(
+                            workspace, repo, pr_id, comment
+                        )
+                    
+                    comments_added += 1
+                    print(f"✓ Published comment for {file_path} (severity: {severity})")
+                    
+                except Exception as e:
+                    print(f"✗ Failed to publish comment for {file_path}: {e}")
+            else:
+                print(f"ℹ️  Skipping {file_path} (severity: {severity}, threshold: {threshold})")
+        
+        print(f"\n📝 Published {comments_added} comments to PR #{pr_id}")
+        return comments_added
+    
+    def _should_post_comment_with_threshold(self, severity: str, threshold: str) -> bool:
+        """Check if severity meets threshold for posting."""
+        if not severity or severity not in self.severity_order:
+            return False
+        
+        min_index = self.severity_order.index(threshold)
+        severity_index = self.severity_order.index(severity)
+        
+        return severity_index >= min_index
         """Check if file should be reviewed based on extension."""
         review_extensions = {'.py', '.js', '.ts', '.java', '.go', '.rb', '.php', '.cs', '.cpp', '.c', '.swift', '.kt', '.rs'}
         return any(file_path.endswith(ext) for ext in review_extensions)
