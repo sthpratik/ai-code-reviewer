@@ -1,0 +1,36 @@
+code_review_standards:
+  performance:
+    - "Check for inefficient loops and nested iterations"
+    - "Identify potential memory leaks"
+    - "Review database query optimization"
+    - "Validate caching strategies"
+  
+  scalability:
+    - "Assess code modularity and separation of concerns"
+    - "Review error handling and resilience patterns"
+    - "Check for hardcoded limits and configurations"
+    - "Validate async/await usage"
+  
+  code_quality:
+    - "Ensure proper naming conventions"
+    - "Check for code duplication (DRY principle)"
+    - "Validate function size and complexity"
+    - "Review proper use of design patterns"
+  
+  readability:
+    - "Check for clear and meaningful comments"
+    - "Validate consistent code formatting"
+    - "Ensure logical code organization"
+    - "Review variable and function naming clarity"
+  
+  security:
+    - "Check for input validation"
+    - "Review authentication and authorization"
+    - "Validate sensitive data handling"
+    - "Check for SQL injection vulnerabilities"
+
+severity_levels:
+  critical: "Must fix before merge"
+  major: "Should fix before merge"
+  minor: "Consider fixing"
+  suggestion: "Optional improvement"

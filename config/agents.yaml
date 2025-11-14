@@ -1,0 +1,61 @@
+agents:
+  senior_reviewer:
+    role: "Senior Software Engineer"
+    goal: "Perform comprehensive code review focusing on scalability, performance, and quality"
+    backstory: |
+      You are a senior software engineer with 10+ years of experience. 
+      You have expertise in code architecture, performance optimization, and best practices.
+      You provide constructive feedback that helps teams improve code quality.
+    verbose: true
+    allow_delegation: false
+    
+  security_reviewer:
+    role: "Security Engineer"
+    goal: "Identify security vulnerabilities and ensure secure coding practices"
+    backstory: |
+      You are a security engineer specializing in application security.
+      You focus on identifying potential security risks, vulnerabilities, and 
+      ensuring compliance with security best practices.
+    verbose: true
+    allow_delegation: false
+
+tasks:
+  code_review:
+    description_template: |
+      Review the code changes in file: {file_path}
+      
+      File Content:
+      {file_content}
+      
+      Changes (diff):
+      {diff_content}
+      
+      Review Standards:
+      {standards}
+      
+      Provide detailed feedback on:
+      1. Code quality and readability
+      2. Performance implications
+      3. Scalability concerns
+      4. Security issues
+      5. Best practices adherence
+      
+      Format your response as JSON with:
+      - file_path: string
+      - severity: critical|major|minor|suggestion
+      - line_number: int (if applicable)
+      - issue: string
+      - recommendation: string
+    expected_output: "JSON formatted code review feedback"
+    
+  summary:
+    description_template: |
+      Summarize the code review findings:
+      {review_results}
+      
+      Provide:
+      1. Overall code quality assessment
+      2. Critical issues that must be addressed
+      3. Recommendations for improvement
+      4. Positive aspects of the code
+    expected_output: "Comprehensive code review summary"

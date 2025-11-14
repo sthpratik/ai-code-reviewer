@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Simple CLI for code review"""
+
+import sys
+import os
+import argparse
+from dotenv import load_dotenv
+from code_reviewer import CodeReviewer
+
+load_dotenv()
+
+def main():
+    parser = argparse.ArgumentParser(description='AI Code Review CLI')
+    
+    # Mode selection
+    parser.add_argument('mode', choices=['local', 'pr'], 
+                       help='Review mode: local changes or Bitbucket PR')
+    
+    # Local mode options
+    parser.add_argument('--base', default='develop',
+                       help='Base branch for local review (default: develop)')
+    
+    # PR mode options  
+    parser.add_argument('--workspace', help='Bitbucket workspace/project')
+    parser.add_argument('--repo', help='Repository name')
+    parser.add_argument('--pr-id', help='Pull request ID')
+    
+    # Comment control
+    parser.add_argument('--min-severity', choices=['suggestion', 'minor', 'major', 'critical'],
+                       help='Minimum severity to post as PR comment (default: from .env)')
+    
+    args = parser.parse_args()
+    
+    # Override env variable if specified
+    if args.min_severity:
+        os.environ['MIN_SEVERITY_FOR_COMMENTS'] = args.min_severity
+    
+    try:
+        reviewer = CodeReviewer()
+        
+        if args.mode == 'local':
+            print(f"🔍 Reviewing local changes against '{args.base}' branch...")
+            reviews = reviewer.review_local_changes(args.base)
+            
+        elif args.mode == 'pr':
+            if not all([args.workspace, args.repo, args.pr_id]):
+                print("❌ Error: --workspace, --repo, and --pr-id required for PR mode")
+                print("Example: ./review pr --workspace CTAPPS --repo imageresizer --pr-id 120")
+                sys.exit(1)
+            
+            print(f"🔍 Reviewing PR #{args.pr_id} in {args.workspace}/{args.repo}...")
+            print(f"📝 Comment threshold: {reviewer.min_severity} and above")
+            reviews = reviewer.review_pull_request(args.workspace, args.repo, args.pr_id)
+        
+        # Print results
+        if reviews:
+            print(f"\n✅ Review complete! Found {len(reviews)} items to review.")
+            reviewer.print_local_review(reviews)
+        else:
+            print("\n✅ No issues found or no files to review.")
+            
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()

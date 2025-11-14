@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code Review Agent</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .review-item { margin: 10px 0; padding: 10px; border-left: 4px solid #007bff; background: #f8f9fa; }
+        .critical { border-left-color: #dc3545; }
+        .major { border-left-color: #fd7e14; }
+        .minor { border-left-color: #ffc107; }
+        .suggestion { border-left-color: #28a745; }
+    </style>
+</head>
+<body>
+    <h1>AI Code Review Agent</h1>
+    
+    <div>
+        <h2>Review Mode</h2>
+        <select id="reviewMode" onchange="toggleMode()">
+            <option value="local">Local Review</option>
+            <option value="bitbucket">Bitbucket PR Review</option>
+        </select>
+    </div>
+
+    <div id="localForm">
+        <h3>Local Code Review</h3>
+        <div class="form-group">
+            <label for="baseBranch">Base Branch:</label>
+            <input type="text" id="baseBranch" value="develop">
+        </div>
+        <button onclick="reviewLocal()">Start Local Review</button>
+    </div>
+
+    <div id="bitbucketForm" style="display: none;">
+        <h3>Bitbucket PR Review</h3>
+        <div class="form-group">
+            <label for="workspace">Workspace:</label>
+            <input type="text" id="workspace" placeholder="myworkspace">
+        </div>
+        <div class="form-group">
+            <label for="repo">Repository:</label>
+            <input type="text" id="repo" placeholder="myrepo">
+        </div>
+        <div class="form-group">
+            <label for="prId">Pull Request ID:</label>
+            <input type="text" id="prId" placeholder="123">
+        </div>
+        <button onclick="reviewBitbucket()">Review Pull Request</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        function toggleMode() {
+            const mode = document.getElementById('reviewMode').value;
+            document.getElementById('localForm').style.display = mode === 'local' ? 'block' : 'none';
+            document.getElementById('bitbucketForm').style.display = mode === 'bitbucket' ? 'block' : 'none';
+        }
+
+        async function reviewLocal() {
+            const baseBranch = document.getElementById('baseBranch').value;
+            showLoading();
+            
+            try {
+                const response = await fetch('/review/local', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ base_branch: baseBranch })
+                });
+                
+                const data = await response.json();
+                showResult(data);
+            } catch (error) {
+                showError('Failed to perform local review: ' + error.message);
+            }
+        }
+
+        async function reviewBitbucket() {
+            const workspace = document.getElementById('workspace').value;
+            const repo = document.getElementById('repo').value;
+            const prId = document.getElementById('prId').value;
+            
+            if (!workspace || !repo || !prId) {
+                showError('Please fill in all Bitbucket fields');
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                const response = await fetch('/review/bitbucket', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workspace, repo, pr_id: prId })
+                });
+                
+                const data = await response.json();
+                showResult(data);
+            } catch (error) {
+                showError('Failed to perform Bitbucket review: ' + error.message);
+            }
+        }
+
+        function showLoading() {
+            document.getElementById('result').innerHTML = '<div class="result">Processing review...</div>';
+        }
+
+        function showResult(data) {
+            let html = `<div class="result success">
+                <h3>${data.message}</h3>
+            </div>`;
+            
+            if (data.reviews && data.reviews.length > 0) {
+                html += '<h3>Review Results:</h3>';
+                data.reviews.forEach(review => {
+                    html += `<div class="review-item ${review.severity}">
+                        <strong>${review.file_path}</strong> - ${review.severity.toUpperCase()}<br>
+                        <strong>Issue:</strong> ${review.issue}<br>
+                        <strong>Recommendation:</strong> ${review.recommendation}
+                        ${review.line_number ? `<br><strong>Line:</strong> ${review.line_number}` : ''}
+                    </div>`;
+                });
+            }
+            
+            document.getElementById('result').innerHTML = html;
+        }
+
+        function showError(message) {
+            document.getElementById('result').innerHTML = `<div class="result error">${message}</div>`;
+        }
+    </script>
+</body>
+</html>
