@@ -24,8 +24,8 @@ tasks:
     description_template: |
       Review the code changes in file: {file_path}
       
-      File Content:
-      {file_content}
+      File Content (with line numbers for reference):
+      {file_content_with_lines}
       
       Changes (diff):
       {diff_content}
@@ -42,8 +42,13 @@ tasks:
       4. Security issues
       5. Best practices adherence
       
-      IMPORTANT: For each issue, try to provide a specific line number where the issue occurs. 
-      Look at the diff content to identify exact line numbers of problematic code.
+      CRITICAL INSTRUCTIONS FOR LINE NUMBERS:
+      - Use the EXACT line numbers from the "File Content (with line numbers)" section above
+      - If you reference a function or variable, find it in the numbered content and use that exact line number
+      - Double-check your line numbers against the provided content
+      - Only report issues for lines that actually exist in the file
+      
+      CRITICAL: You MUST return ONLY valid JSON. Do not include any explanatory text, thoughts, or reasoning outside the JSON.
       
       Return ONLY valid JSON in this exact format:
       {{

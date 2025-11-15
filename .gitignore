@@ -77,3 +77,4 @@ yarn-error.log*
 debug_files/
 
 reviews/*
+debug_files/*

@@ -47,6 +47,106 @@ class CodeReviewer:
             return f"\nAdditional Project-Specific Guidelines:\n{self.standards['custom_guidelines']}"
         return ""
     
+    def _extract_json_from_response(self, response_text: str) -> Dict:
+        """Extract JSON from AI response, handling various formats."""
+        # Try direct JSON parsing first
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+        
+        # Look for JSON blocks in the response
+        import re
+        
+        # Pattern to find JSON blocks
+        json_patterns = [
+            r'```json\s*(\{.*?\})\s*```',  # JSON in code blocks
+            r'```\s*(\{.*?\})\s*```',      # JSON in generic code blocks
+            r'(\{[^{}]*"file_path"[^{}]*\})', # Simple JSON with file_path
+            r'(\{.*?"feedback".*?\})',      # JSON with feedback array
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                try:
+                    return json.loads(match)
+                except json.JSONDecodeError:
+                    continue
+        
+        # If no JSON found, try to extract structured information
+        return self._parse_structured_response(response_text)
+    
+    def _parse_structured_response(self, response_text: str) -> Dict:
+        """Parse structured response when JSON extraction fails."""
+        import re
+        
+        # Extract line numbers and issues from the response
+        feedback = []
+        
+        # Pattern to find line numbers and issues
+        line_patterns = [
+            r'line\s+(\d+)[:\s]*([^.]+\.)',
+            r'\(line\s+(\d+)\)[:\s]*([^.]+\.)',
+            r'lines?\s+(\d+)[:\s]*([^.]+\.)',
+        ]
+        
+        for pattern in line_patterns:
+            matches = re.findall(pattern, response_text, re.IGNORECASE)
+            for line_num, issue in matches:
+                # Determine severity based on keywords
+                severity = "minor"
+                if any(word in issue.lower() for word in ['critical', 'security', 'vulnerability']):
+                    severity = "critical"
+                elif any(word in issue.lower() for word in ['error', 'bug', 'problem', 'inefficient']):
+                    severity = "major"
+                elif any(word in issue.lower() for word in ['suggest', 'recommend', 'consider']):
+                    severity = "suggestion"
+                
+                feedback.append({
+                    "severity": severity,
+                    "line_number": int(line_num),
+                    "issue": issue.strip(),
+                    "recommendation": f"Address the issue mentioned: {issue.strip()}"
+                })
+        
+        # If no line-specific issues found, create a general review
+        if not feedback:
+            feedback.append({
+                "severity": "minor",
+                "line_number": None,
+                "issue": "General code review feedback",
+                "recommendation": response_text[:500] + "..." if len(response_text) > 500 else response_text
+            })
+        
+        return {"feedback": feedback}
+    
+    def _validate_line_numbers(self, review_data: Dict, file_content: str) -> Dict:
+        """Validate and correct line numbers in review data."""
+        if not isinstance(review_data, dict) or 'feedback' not in review_data:
+            return review_data
+        
+        total_lines = len(file_content.splitlines())
+        
+        for feedback_item in review_data.get('feedback', []):
+            if isinstance(feedback_item, dict) and 'line_number' in feedback_item:
+                line_num = feedback_item['line_number']
+                if isinstance(line_num, int):
+                    if line_num < 1 or line_num > total_lines:
+                        print(f"⚠️  Invalid line number {line_num} (file has {total_lines} lines), setting to None")
+                        feedback_item['line_number'] = None
+                        feedback_item['issue'] = f"[Line number corrected] {feedback_item.get('issue', '')}"
+        
+        return review_data
+    
+    def _add_line_numbers_to_content(self, content: str) -> str:
+        """Add line numbers to content for AI reference."""
+        lines = content.splitlines()
+        numbered_lines = []
+        for i, line in enumerate(lines, 1):
+            numbered_lines.append(f"{i:4d}: {line}")
+        return '\n'.join(numbered_lines)
+    
     def _save_debug_file(self, file_path: str, content: str, workspace: str, repo: str, pr_id: str, diff_content: str = None) -> None:
         """Save fetched file content for debugging line number issues."""
         if not self.debug_mode:
@@ -65,17 +165,45 @@ class CodeReviewer:
                 f.write(f"# File: {file_path}\n")
                 f.write(f"# Content length: {len(content)} characters\n")
                 f.write(f"# Lines: {len(content.splitlines())}\n")
+                f.write("# " + "="*50 + "\n")
+                f.write("# ACTUAL FILE CONTENT SENT TO AI (line numbers match this):\n")
                 f.write("# " + "="*50 + "\n\n")
-                f.write(content)
+                
+                # Add line numbers to the actual content for easy reference
+                lines = content.splitlines()
+                for i, line in enumerate(lines, 1):
+                    f.write(f"{i:4d}: {line}\n")
                 
                 if diff_content:
                     f.write(f"\n\n# DIFF CONTENT\n")
                     f.write("# " + "="*50 + "\n")
                     f.write(diff_content)
                     
-            print(f"🐛 Debug: Saved {debug_filename}")
+            print(f"🐛 Debug: Saved {debug_filename} (with line numbers)")
         except Exception as e:
             print(f"⚠️  Debug: Failed to save {debug_filename}: {e}")
+    
+    def _save_ai_response(self, file_path: str, ai_response: str, workspace: str, repo: str, pr_id: str) -> None:
+        """Save raw AI response for debugging."""
+        if not self.debug_mode:
+            return
+            
+        safe_filename = file_path.replace('/', '_').replace('\\', '_')
+        response_filename = f"debug_files/{workspace}_{repo}_PR{pr_id}_{safe_filename}_AI_RESPONSE.txt"
+        
+        try:
+            with open(response_filename, 'w', encoding='utf-8') as f:
+                f.write(f"# AI RESPONSE DEBUG FILE\n")
+                f.write(f"# Workspace: {workspace}\n")
+                f.write(f"# Repo: {repo}\n")
+                f.write(f"# PR: {pr_id}\n")
+                f.write(f"# File: {file_path}\n")
+                f.write(f"# Response length: {len(ai_response)} characters\n")
+                f.write("# " + "="*50 + "\n\n")
+                f.write(ai_response)
+            print(f"🐛 Debug: Saved AI response {response_filename}")
+        except Exception as e:
+            print(f"⚠️  Debug: Failed to save AI response: {e}")
     
     def review_local_changes(self, base_branch: str = 'develop') -> List[Dict]:
         """Review local code changes without posting to Bitbucket."""
@@ -90,6 +218,7 @@ class CodeReviewer:
                 context = {
                     'file_path': file_path,
                     'file_content': file_content,
+                    'file_content_with_lines': self._add_line_numbers_to_content(file_content),
                     'diff_content': diff_content,
                     'standards': self.standards,
                     'custom_guidelines_section': self._format_custom_guidelines()
@@ -100,7 +229,14 @@ class CodeReviewer:
                 result = crew.kickoff()
                 
                 try:
-                    review_data = json.loads(result)
+                    # Save raw AI response in debug mode
+                    if self.debug_mode:
+                        self._save_ai_response(file_path, str(result), "local", "review", "local")
+                    
+                    review_data = self._extract_json_from_response(str(result))
+                    
+                    # Validate line numbers
+                    review_data = self._validate_line_numbers(review_data, file_content)
                     
                     # Handle different response formats from AI
                     if isinstance(review_data, dict):
@@ -179,8 +315,11 @@ class CodeReviewer:
                             file_content = self.bitbucket_client.get_file_content(workspace, repo, file_path)
                             print(f"📄 Fetched full file content ({len(file_content)} chars)")
                             
-                            # Save debug file if debug mode is enabled
+                            # Save debug file if debug mode is enabled (save original content)
                             self._save_debug_file(file_path, file_content, workspace, repo, pr_id, file_diff)
+                            
+                            # Send clean content to AI (without debug headers)
+                            clean_content = file_content
                             
                         except Exception as e:
                             print(f"⚠️  Could not fetch file content: {e}")
@@ -188,7 +327,8 @@ class CodeReviewer:
                         
                         context = {
                             'file_path': file_path,
-                            'file_content': file_content,
+                            'file_content': clean_content,
+                            'file_content_with_lines': self._add_line_numbers_to_content(clean_content),
                             'diff_content': file_diff,
                             'standards': self.standards,
                             'custom_guidelines_section': self._format_custom_guidelines()
@@ -199,7 +339,15 @@ class CodeReviewer:
                         result = crew.kickoff()
                         
                         try:
-                            review_data = json.loads(result)
+                            # Save raw AI response in debug mode
+                            if self.debug_mode:
+                                self._save_ai_response(file_path, str(result), workspace, repo, pr_id)
+                            
+                            review_data = self._extract_json_from_response(str(result))
+                            
+                            # Validate line numbers
+                            review_data = self._validate_line_numbers(review_data, clean_content)
+                            
                             # Ensure review_data has required fields
                             if isinstance(review_data, dict):
                                 review_data['file_path'] = file_path
