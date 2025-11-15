@@ -1,36 +1,64 @@
-# AI Code Review Agent
+# AI Code Reviewer
 
-A CrewAI-powered code review agent that uses AWS Bedrock (Claude 3.5 Sonnet) to perform intelligent code reviews.
+An intelligent code review agent powered by AWS Bedrock (Claude 3.5 Sonnet) with Bitbucket Server integration.
 
 ## Features
 
 - **Local Review**: Review code changes locally without posting comments
 - **Bitbucket Integration**: Review pull requests directly from server and add comments automatically
 - **Web API Interface**: REST API and web UI for easy integration
+- **Global Installation**: Install as a global package and use from anywhere
 - **Docker Support**: Containerized deployment with docker-compose
 - **Configurable Standards**: Customizable code review criteria via YAML
+- **Custom Guidelines**: Project-specific coding standards support
 - **Senior Engineer Perspective**: Reviews focus on scalability, performance, and quality
 - **KISS Principle**: Simple, modular design with separate concerns
 
-## Quick Start with Docker
+## Quick Installation
 
-1. **Clone and configure:**
-   ```bash
-   git clone <repository-url>
-   cd codeReviewAgent
-   cp .env.template .env
-   # Edit .env with your credentials
-   ```
+### Global Package Installation (Recommended)
 
-2. **Start the application:**
-   ```bash
-   ./start.sh
-   ```
+```bash
+# Install globally
+pip install ai-code-reviewer
 
-3. **Access the web interface:**
-   - Web UI: http://localhost
-   - API docs: http://localhost/docs
-   - Health check: http://localhost/health
+# Use from anywhere
+ai-code-reviewer local --base develop
+ai-code-reviewer pr --workspace TEAM --repo PROJECT --pr-id 120
+
+# Short alias also available
+acr local --base main
+```
+
+### Docker Installation
+
+```bash
+git clone <repository-url>
+cd ai-code-reviewer
+cp .env.template .env
+# Edit .env with your credentials
+./start.sh
+```
+
+Access the web interface at http://localhost
+
+## Quick Start Examples
+
+### Global Usage (After pip install)
+
+```bash
+# Review local changes
+ai-code-reviewer local --base develop
+
+# Review Bitbucket PR
+ai-code-reviewer pr --workspace CTAPPS --repo imageresizer --pr-id 120
+
+# Start web server
+ai-code-reviewer server --port 8080
+
+# Show help
+ai-code-reviewer --help
+```
 
 ## Manual Setup
 
@@ -145,6 +173,8 @@ docker-compose up --build -d
 # Bitbucket Server Configuration
 BITBUCKET_URL=https://git.cnvrmedia.net/rest/api/1.0
 BITBUCKET_TOKEN=your_server_token_here
+BITBUCKET_WORKSPACE=your_default_workspace
+BITBUCKET_REPO=your_default_repo
 
 # AWS Configuration (for Bedrock)
 AWS_REGION=us-east-1
@@ -153,7 +183,12 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 
 # Optional: Custom model
 BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+
+# Debug Configuration
+DEBUG_MODE=false
 ```
+
+**Default Workspace/Repo**: Set `BITBUCKET_WORKSPACE` and `BITBUCKET_REPO` to avoid specifying them in every command. CLI arguments override these defaults.
 
 ### Review Standards
 Edit `config/review_standards.yaml` to customize review criteria:
@@ -163,6 +198,31 @@ Edit `config/review_standards.yaml` to customize review criteria:
 - **Code Quality**: Naming, DRY principle, complexity
 - **Readability**: Comments, formatting, organization
 - **Security**: Input validation, authentication, data handling
+
+### Custom Project Guidelines
+Create `.amazonq/rules/coding-standards.md` to add project-specific coding standards that will be automatically included in code reviews. This file supports:
+
+- Language-specific guidelines (Python, JavaScript, Java, etc.)
+- Project-specific best practices
+- Custom security requirements
+- Team coding conventions
+
+Example structure:
+```markdown
+# Project-Specific Coding Standards
+
+## General Guidelines
+- Use meaningful variable names
+- Keep functions small and focused
+- Document complex business logic
+
+## Python Specific
+- Use type hints for all functions
+- Follow PEP 8 conventions
+- Prefer f-strings for formatting
+```
+
+The custom guidelines are automatically loaded and combined with the base review standards when the file exists.
 
 ## Architecture
 
@@ -207,6 +267,26 @@ python test_token.py                              # Test Bitbucket access
 python debug_pr.py CTAPPS imageresizer 120      # Debug specific PR
 python test_pr_diff.py CTAPPS imageresizer 120  # Test PR diff fetch
 ```
+
+### Debug Mode for Line Number Validation
+
+Enable debug mode to save fetched files from Bitbucket for line number validation:
+
+```bash
+# Set in .env file
+DEBUG_MODE=true
+
+# Or set as environment variable
+export DEBUG_MODE=true
+./review pr --workspace CTAPPS --repo imageresizer --pr-id 120
+```
+
+**Debug mode features:**
+- Saves all fetched files to `debug_files/` directory
+- Includes file metadata (workspace, repo, PR, line count)
+- Saves both file content and diff content
+- Files named: `{workspace}_{repo}_PR{pr_id}_{safe_filename}`
+- Helps validate line number accuracy in reviews
 
 ## API Documentation
 

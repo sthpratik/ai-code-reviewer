@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict
+import os
 import uvicorn
 import logging
 from code_reviewer import CodeReviewer
@@ -21,8 +22,8 @@ class LocalReviewRequest(BaseModel):
     config_path: Optional[str] = "config/review_standards.yaml"
 
 class BitbucketReviewRequest(BaseModel):
-    workspace: str
-    repo: str
+    workspace: Optional[str] = None
+    repo: Optional[str] = None
     pr_id: str
     config_path: Optional[str] = "config/review_standards.yaml"
 
@@ -76,9 +77,18 @@ async def review_bitbucket(request: BitbucketReviewRequest):
         if not reviewer:
             raise HTTPException(status_code=500, detail="Code reviewer not initialized")
         
+        # Use environment variables as defaults, request params as overrides
+        workspace = request.workspace or os.getenv('BITBUCKET_WORKSPACE')
+        repo = request.repo or os.getenv('BITBUCKET_REPO')
+        
+        if not workspace:
+            raise HTTPException(status_code=400, detail="workspace required (provide in request or set BITBUCKET_WORKSPACE env var)")
+        if not repo:
+            raise HTTPException(status_code=400, detail="repo required (provide in request or set BITBUCKET_REPO env var)")
+        
         reviews = reviewer.review_pull_request(
-            request.workspace, 
-            request.repo, 
+            workspace, 
+            repo, 
             request.pr_id
         )
         

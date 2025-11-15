@@ -168,7 +168,51 @@ cursor.execute("SELECT * FROM users WHERE name = %s", (user_input,))
 
 ## Advanced Usage
 
-### 1. Custom Review Standards
+### 1. Custom Project Guidelines
+
+The system automatically detects and uses project-specific coding standards from `.amazonq/rules/coding-standards.md`. This file is automatically loaded and combined with base review standards.
+
+**Setting up custom guidelines:**
+
+1. Create the directory structure:
+```bash
+mkdir -p .amazonq/rules
+```
+
+2. Create the guidelines file:
+```bash
+cat > .amazonq/rules/coding-standards.md << 'EOF'
+# Project-Specific Coding Standards
+
+## General Guidelines
+- Use meaningful variable names that clearly express intent
+- Keep functions small and focused on a single responsibility
+- Avoid deep nesting (max 3-4 levels)
+
+## Python Specific
+- Use type hints for all function parameters and return values
+- Follow PEP 8 naming conventions strictly
+- Prefer f-strings over .format() or % formatting
+
+## Security Requirements
+- Never commit secrets, API keys, or sensitive data
+- Validate and sanitize all external inputs
+- Use secure communication protocols (HTTPS, TLS)
+EOF
+```
+
+3. Run reviews as normal - custom guidelines are automatically included:
+```bash
+python main.py --mode local
+```
+
+**Benefits:**
+- **Automatic Integration**: No configuration changes needed
+- **Team Consistency**: Version control the guidelines with your code
+- **Language Agnostic**: Support any programming language
+- **Flexible Format**: Use standard Markdown for easy editing
+
+### 2. Custom Review Standards
 
 Create project-specific standards:
 
@@ -196,7 +240,7 @@ Usage:
 python main.py --config config/frontend_standards.yaml
 ```
 
-### 2. Multiple Agent Review
+### 3. Multiple Agent Review
 
 Modify `code_reviewer.py` to use multiple agents:
 
@@ -215,7 +259,7 @@ def review_with_specialists(self, file_path: str):
     return agent
 ```
 
-### 3. Batch Processing
+### 4. Batch Processing
 
 Review multiple repositories:
 
@@ -245,7 +289,7 @@ for repo in "${REPOS[@]}"; do
 done
 ```
 
-### 4. Scheduled Reviews
+### 5. Scheduled Reviews
 
 Set up cron job for regular reviews:
 

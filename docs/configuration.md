@@ -45,9 +45,65 @@ severity_levels:
   suggestion: "Optional improvement"
 ```
 
+## Custom Project Guidelines
+
+### File: `.amazonq/rules/coding-standards.md`
+
+Create this file to add project-specific coding standards that will be automatically included in all code reviews. The system automatically detects and loads this file when it exists.
+
+**Example structure:**
+
+```markdown
+# Project-Specific Coding Standards
+
+## General Guidelines
+- Use meaningful variable names that clearly express intent
+- Keep functions small and focused on a single responsibility
+- Avoid deep nesting (max 3-4 levels)
+- Remove commented-out code and debug statements
+
+## Language-Specific Guidelines
+
+### Python
+- Use type hints for all function parameters and return values
+- Follow PEP 8 naming conventions strictly
+- Prefer f-strings over .format() or % formatting
+- Use dataclasses for simple data containers
+
+### JavaScript/TypeScript
+- Use const/let instead of var
+- Prefer async/await over Promise chains
+- Use TypeScript strict mode when available
+- Follow consistent naming conventions (camelCase)
+
+### Java
+- Follow standard naming conventions
+- Use appropriate access modifiers
+- Prefer composition over inheritance
+- Handle checked exceptions appropriately
+
+## Security Requirements
+- Never commit secrets, API keys, or sensitive data
+- Validate and sanitize all external inputs
+- Use secure communication protocols (HTTPS, TLS)
+- Follow principle of least privilege for access controls
+
+## Testing Standards
+- Write tests for critical business logic
+- Include both positive and negative test scenarios
+- Use descriptive test names that explain the expected behavior
+- Mock external dependencies to ensure test isolation
+```
+
+**Key Features:**
+- **Automatic Detection**: The system automatically checks for this file during code reviews
+- **Language Agnostic**: Supports guidelines for any programming language
+- **Team Collaboration**: Can be version controlled and shared across the team
+- **Flexible Format**: Use standard Markdown formatting for easy readability
+
 ### Customizing Review Standards
 
-You can modify the standards to match your team's requirements:
+You can modify the base standards to match your team's requirements:
 
 ```yaml
 code_review_standards:

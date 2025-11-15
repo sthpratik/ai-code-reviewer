@@ -20,11 +20,62 @@ class CodeReviewer:
         # Get minimum severity for comments from env
         self.min_severity = os.getenv('MIN_SEVERITY_FOR_COMMENTS', 'major').lower()
         self.severity_order = ['suggestion', 'minor', 'major', 'critical']
+        
+        # Debug mode for storing fetched files
+        self.debug_mode = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+        if self.debug_mode:
+            os.makedirs('debug_files', exist_ok=True)
     
     def _load_standards(self, config_path: str) -> Dict:
-        """Load code review standards from config file."""
+        """Load code review standards from config file and merge with custom standards if available."""
         with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
+            standards = yaml.safe_load(f)
+        
+        # Check for custom coding standards
+        custom_standards_path = '.amazonq/rules/coding-standards.md'
+        if os.path.exists(custom_standards_path):
+            with open(custom_standards_path, 'r') as f:
+                custom_content = f.read().strip()
+                if custom_content:
+                    standards['custom_guidelines'] = custom_content
+        
+        return standards
+    
+    def _format_custom_guidelines(self) -> str:
+        """Format custom guidelines section for the prompt."""
+        if 'custom_guidelines' in self.standards:
+            return f"\nAdditional Project-Specific Guidelines:\n{self.standards['custom_guidelines']}"
+        return ""
+    
+    def _save_debug_file(self, file_path: str, content: str, workspace: str, repo: str, pr_id: str, diff_content: str = None) -> None:
+        """Save fetched file content for debugging line number issues."""
+        if not self.debug_mode:
+            return
+            
+        # Create safe filename
+        safe_filename = file_path.replace('/', '_').replace('\\', '_')
+        debug_filename = f"debug_files/{workspace}_{repo}_PR{pr_id}_{safe_filename}"
+        
+        try:
+            with open(debug_filename, 'w', encoding='utf-8') as f:
+                f.write(f"# DEBUG FILE - Fetched from Bitbucket\n")
+                f.write(f"# Workspace: {workspace}\n")
+                f.write(f"# Repo: {repo}\n")
+                f.write(f"# PR: {pr_id}\n")
+                f.write(f"# File: {file_path}\n")
+                f.write(f"# Content length: {len(content)} characters\n")
+                f.write(f"# Lines: {len(content.splitlines())}\n")
+                f.write("# " + "="*50 + "\n\n")
+                f.write(content)
+                
+                if diff_content:
+                    f.write(f"\n\n# DIFF CONTENT\n")
+                    f.write("# " + "="*50 + "\n")
+                    f.write(diff_content)
+                    
+            print(f"🐛 Debug: Saved {debug_filename}")
+        except Exception as e:
+            print(f"⚠️  Debug: Failed to save {debug_filename}: {e}")
     
     def review_local_changes(self, base_branch: str = 'develop') -> List[Dict]:
         """Review local code changes without posting to Bitbucket."""
@@ -40,7 +91,8 @@ class CodeReviewer:
                     'file_path': file_path,
                     'file_content': file_content,
                     'diff_content': diff_content,
-                    'standards': self.standards
+                    'standards': self.standards,
+                    'custom_guidelines_section': self._format_custom_guidelines()
                 }
                 
                 task = create_task_from_config('code_review', self.senior_agent, context)
@@ -126,6 +178,10 @@ class CodeReviewer:
                         try:
                             file_content = self.bitbucket_client.get_file_content(workspace, repo, file_path)
                             print(f"📄 Fetched full file content ({len(file_content)} chars)")
+                            
+                            # Save debug file if debug mode is enabled
+                            self._save_debug_file(file_path, file_content, workspace, repo, pr_id, file_diff)
+                            
                         except Exception as e:
                             print(f"⚠️  Could not fetch file content: {e}")
                             file_content = f"PR changes for {file_path}\n\nDiff:\n{file_diff}"
@@ -134,7 +190,8 @@ class CodeReviewer:
                             'file_path': file_path,
                             'file_content': file_content,
                             'diff_content': file_diff,
-                            'standards': self.standards
+                            'standards': self.standards,
+                            'custom_guidelines_section': self._format_custom_guidelines()
                         }
                         
                         task = create_task_from_config('code_review', self.senior_agent, context)

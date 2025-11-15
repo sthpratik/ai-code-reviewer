@@ -33,6 +33,8 @@ tasks:
       Review Standards:
       {standards}
       
+      {custom_guidelines_section}
+      
       Provide detailed feedback on:
       1. Code quality and readability
       2. Performance implications

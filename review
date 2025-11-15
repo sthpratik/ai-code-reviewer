@@ -22,8 +22,8 @@ def main():
                        help='Base branch for local review (default: develop)')
     
     # PR mode options  
-    parser.add_argument('--workspace', help='Bitbucket workspace/project')
-    parser.add_argument('--repo', help='Repository name')
+    parser.add_argument('--workspace', help='Bitbucket workspace/project (overrides BITBUCKET_WORKSPACE)')
+    parser.add_argument('--repo', help='Repository name (overrides BITBUCKET_REPO)')
     parser.add_argument('--pr-id', help='Pull request ID')
     
     # Publish mode options
@@ -48,13 +48,22 @@ def main():
             reviews = reviewer.review_local_changes(args.base)
             
         elif args.mode == 'pr':
-            if not all([args.workspace, args.repo, args.pr_id]):
-                print("❌ Error: --workspace, --repo, and --pr-id required for PR mode")
+            # Use environment variables as defaults, CLI args as overrides
+            workspace = args.workspace or os.getenv('BITBUCKET_WORKSPACE')
+            repo = args.repo or os.getenv('BITBUCKET_REPO')
+            pr_id = args.pr_id
+            
+            if not all([workspace, repo, pr_id]):
+                missing = []
+                if not workspace: missing.append('workspace (--workspace or BITBUCKET_WORKSPACE)')
+                if not repo: missing.append('repo (--repo or BITBUCKET_REPO)')
+                if not pr_id: missing.append('pr-id (--pr-id)')
+                print(f"❌ Error: Missing required parameters: {', '.join(missing)}")
                 print("Example: ./review pr --workspace CTAPPS --repo imageresizer --pr-id 120")
                 sys.exit(1)
             
-            print(f"🔍 Reviewing PR #{args.pr_id} in {args.workspace}/{args.repo}...")
-            reviews = reviewer.review_pull_request(args.workspace, args.repo, args.pr_id)
+            print(f"🔍 Reviewing PR #{pr_id} in {workspace}/{repo}...")
+            reviews = reviewer.review_pull_request(workspace, repo, pr_id)
             
         elif args.mode == 'publish':
             review_file = args.review_file
