@@ -1,6 +1,6 @@
 - [Home](/)
 - [Installation](installation.md)
-- [Global Package Install](INSTALL.md)
+- [Global Package Install](install.md)
 - [Architecture](architecture.md)
 - [System Diagrams](diagrams.md)
 - [Configuration](configuration.md)
