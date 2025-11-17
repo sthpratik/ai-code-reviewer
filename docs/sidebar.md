@@ -2,6 +2,7 @@
 - [Installation](installation.md)
 - [Global Package Install](../INSTALL.md)
 - [Architecture](architecture.md)
+- [System Diagrams](diagrams.md)
 - [Configuration](configuration.md)
 - [Custom Guidelines](custom-guidelines.md)
 - [Usage](usage.md)
